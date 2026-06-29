@@ -1,0 +1,11 @@
+target/
+.idea/
+errorcode.sql
+*.class
+*.iml
+.env
+*.log
+.DS_Store
+.classpath
+.project
+.settings/
