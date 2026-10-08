@@ -23,7 +23,7 @@
 .\build.ps1
 ```
 
-这个版本使用纯 Java 8 解析 `.xlsx`，不需要访问 Maven 仓库。
+这个版本使用纯 Java（JDK 25 编译）解析 `.xlsx`，不需要访问 Maven 仓库。
 
 ## Maven 构建
 
@@ -34,6 +34,14 @@ mvn clean package
 如果本机 Maven 仓库或公司内网仓库不可用，请使用上面的 `build.ps1`。
 
 ## 使用
+
+### 双击启动（图形界面）
+
+双击 `启动工具.bat`，弹出窗口后用「浏览...」选择 Excel 文件和输出 SQL 路径，点「生成 SQL」即可。
+
+（首次运行若无 JAR 会自动调用 `build.ps1` 编译；需本机已安装 Java 并配置 PATH。）
+
+### 命令行
 
 ```powershell
 java -jar target\error-code-convert-sql-1.0.0.jar C:\Users\Reid.Liu\Downloads\ErrorCode-临工.xlsx

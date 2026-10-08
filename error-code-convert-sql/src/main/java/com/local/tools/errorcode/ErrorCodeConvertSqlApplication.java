@@ -26,6 +26,22 @@ import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JFileChooser;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JTextField;
+import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
+import javax.swing.filechooser.FileNameExtensionFilter;
+import java.awt.BorderLayout;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Insets;
+
 public class ErrorCodeConvertSqlApplication {
     private static final String DEFAULT_OUTPUT = "errorcode.sql";
     private static final String DEFAULT_PREFIX = "RWI.";
@@ -35,6 +51,10 @@ public class ErrorCodeConvertSqlApplication {
     private static final String DEFAULT_GROUP = "robot";
 
     public static void main(String[] args) {
+        if (args.length == 0) {
+            Gui.launch();
+            return;
+        }
         try {
             Config config = Config.parse(args);
             if (config.help) {
@@ -42,30 +62,38 @@ public class ErrorCodeConvertSqlApplication {
                 return;
             }
 
-            List<ErrorCodeRow> rows = readRows(config);
-            if (rows.isEmpty()) {
-                throw new IllegalArgumentException("Excel 中没有找到可生成 SQL 的数据行。");
-            }
-
-            String sql = SqlWriter.write(rows, config);
-            Files.write(config.outputPath, sql.getBytes(StandardCharsets.UTF_8));
-            System.out.println("生成成功: " + config.outputPath.toAbsolutePath());
-            System.out.println("数据行数: " + rows.size());
+            int count = generate(config);
+            System.out.println("Generated: " + config.outputPath.toAbsolutePath());
+            System.out.println("Rows: " + count);
         } catch (Exception ex) {
-            System.err.println("生成失败: " + ex.getMessage());
+            System.err.println("Failed: " + ex.getMessage());
             System.err.println();
             printUsage();
             System.exit(1);
         }
     }
 
+    private static int generate(Config config) throws Exception {
+        List<ErrorCodeRow> rows = readRows(config);
+        if (rows.isEmpty()) {
+            throw new IllegalArgumentException("No data rows found in the Excel file to generate SQL.");
+        }
+        String sql = SqlWriter.write(rows, config);
+        Path output = config.outputPath.toAbsolutePath();
+        if (output.getParent() != null) {
+            Files.createDirectories(output.getParent());
+        }
+        Files.write(output, sql.getBytes(StandardCharsets.UTF_8));
+        return rows.size();
+    }
+
     private static List<ErrorCodeRow> readRows(Config config) throws Exception {
         File excel = config.excelPath.toFile();
         if (!excel.isFile()) {
-            throw new IllegalArgumentException("Excel 文件不存在: " + config.excelPath);
+            throw new IllegalArgumentException("Excel file not found: " + config.excelPath);
         }
         if (!excel.getName().toLowerCase(Locale.ROOT).endsWith(".xlsx")) {
-            throw new IllegalArgumentException("当前无依赖版本支持 .xlsx 文件，请先另存为 xlsx。");
+            throw new IllegalArgumentException("Only .xlsx files are supported. Please save the file as .xlsx first.");
         }
 
         XlsxSheet sheet = XlsxReader.read(excel, config.sheetName);
@@ -80,7 +108,10 @@ public class ErrorCodeConvertSqlApplication {
             if (isBlank(keySuffix) && isBlank(code) && isBlank(cn) && isBlank(en)) {
                 continue;
             }
-            if (isBlank(keySuffix) || isBlank(code)) {
+            if (isBlank(keySuffix)) {
+                continue;
+            }
+            if (isBlank(cn) && isBlank(en)) {
                 continue;
             }
 
@@ -108,7 +139,7 @@ public class ErrorCodeConvertSqlApplication {
                 return new Header(rowIndex, keySuffixColumn, codeColumn, cnColumn, enColumn);
             }
         }
-        throw new IllegalArgumentException("未找到表头，需要包含: 传参值 / key / 中文 / 英文。");
+        throw new IllegalArgumentException("Header row not found. The sheet must contain columns for: param value, key, Chinese text, English text.");
     }
 
     private static Integer firstPresent(Map<String, Integer> columns, String... names) {
@@ -135,17 +166,17 @@ public class ErrorCodeConvertSqlApplication {
     }
 
     private static void printUsage() {
-        System.out.println("用法:");
-        System.out.println("  java -jar target/error-code-convert-sql-1.0.0.jar <xlsx文件> [输出SQL文件]");
+        System.out.println("Usage:");
+        System.out.println("  java -jar error-code-convert-sql-1.0.0.jar <xlsx-file> [output-sql-file]");
         System.out.println();
-        System.out.println("可选参数:");
-        System.out.println("  -o, --output <file>      输出 SQL 文件，默认 errorcode.sql");
-        System.out.println("  --sheet <name>           指定 Sheet，默认第一个 Sheet");
-        System.out.println("  --prefix <prefix>        i18n_key 前缀，默认 RWI.");
-        System.out.println("  --timestamp <time>       create/update 时间");
-        System.out.println("  --create-by <name>       create_by/last_update_by，默认 kuka");
-        System.out.println("  --create-app <name>      create_app/last_update_app，默认 OptionalCollection:312");
-        System.out.println("  --group <name>           i18n_group，默认 robot");
+        System.out.println("Options:");
+        System.out.println("  -o, --output <file>      Output SQL file, default errorcode.sql");
+        System.out.println("  --sheet <name>           Sheet name, default the first sheet");
+        System.out.println("  --prefix <prefix>        i18n_key prefix, default RWI.");
+        System.out.println("  --timestamp <time>       create/update time");
+        System.out.println("  --create-by <name>       create_by/last_update_by, default kuka");
+        System.out.println("  --create-app <name>      create_app/last_update_app, default OptionalCollection:312");
+        System.out.println("  --group <name>           i18n_group, default robot");
     }
 
     private static class Config {
@@ -187,10 +218,10 @@ public class ErrorCodeConvertSqlApplication {
             }
 
             if (positional.isEmpty()) {
-                throw new IllegalArgumentException("请传入 Excel 文件路径。");
+                throw new IllegalArgumentException("Please provide the Excel file path.");
             }
             if (positional.size() > 2) {
-                throw new IllegalArgumentException("位置参数过多。");
+                throw new IllegalArgumentException("Too many positional arguments.");
             }
             config.excelPath = Paths.get(positional.get(0));
             if (positional.size() == 2) {
@@ -201,7 +232,7 @@ public class ErrorCodeConvertSqlApplication {
 
         private static String requireValue(String[] args, int index, String option) {
             if (index >= args.length) {
-                throw new IllegalArgumentException(option + " 缺少参数值。");
+                throw new IllegalArgumentException(option + " requires a value.");
             }
             return args[index];
         }
@@ -321,7 +352,7 @@ public class ErrorCodeConvertSqlApplication {
 
             NodeList sheetNodes = workbook.getElementsByTagName("sheet");
             if (sheetNodes.getLength() == 0) {
-                throw new IllegalArgumentException("Excel 没有 Sheet。");
+                throw new IllegalArgumentException("The Excel file has no sheets.");
             }
             Element selected = null;
             for (int i = 0; i < sheetNodes.getLength(); i++) {
@@ -332,7 +363,7 @@ public class ErrorCodeConvertSqlApplication {
                 }
             }
             if (selected == null) {
-                throw new IllegalArgumentException("未找到 Sheet: " + sheetName);
+                throw new IllegalArgumentException("Sheet not found: " + sheetName);
             }
 
             String relationshipId = selected.getAttribute("r:id");
@@ -341,7 +372,7 @@ public class ErrorCodeConvertSqlApplication {
             }
             String target = targets.get(relationshipId);
             if (isBlank(target)) {
-                throw new IllegalArgumentException("无法定位 Sheet 文件: " + selected.getAttribute("name"));
+                throw new IllegalArgumentException("Cannot locate sheet file: " + selected.getAttribute("name"));
             }
             target = target.replace('\\', '/');
             if (target.startsWith("/")) {
@@ -353,7 +384,7 @@ public class ErrorCodeConvertSqlApplication {
         private static Document readXml(ZipFile zip, String path) throws Exception {
             ZipEntry entry = zip.getEntry(path);
             if (entry == null) {
-                throw new IllegalArgumentException("xlsx 内缺少文件: " + path);
+                throw new IllegalArgumentException("Missing file inside xlsx: " + path);
             }
             byte[] bytes = readAll(zip.getInputStream(entry));
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
@@ -459,7 +490,7 @@ public class ErrorCodeConvertSqlApplication {
             for (int i = 0; i < rows.size(); i++) {
                 ErrorCodeRow row = rows.get(i);
                 String text = "cn".equals(language) ? row.cn : row.en;
-                String value = row.code + " " + text;
+                String value = isBlank(row.code) ? text : row.code + " " + text;
                 sql.append("    ('")
                         .append(escape(row.i18nKey)).append("', '")
                         .append(escape(language)).append("', '")
@@ -477,6 +508,130 @@ public class ErrorCodeConvertSqlApplication {
 
         private static String escape(String value) {
             return value == null ? "" : value.replace("'", "''");
+        }
+    }
+
+    private static class Gui {
+        private static void launch() {
+            SwingUtilities.invokeLater(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+                    } catch (Exception ignored) {
+                    }
+                    createAndShow();
+                }
+            });
+        }
+
+        private static void createAndShow() {
+            final JFrame frame = new JFrame("Error Code to SQL Tool");
+            frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+            final JTextField excelField = new JTextField(28);
+            final JTextField outputField = new JTextField(28);
+            final JLabel statusLabel = new JLabel("Please select the Excel file and output SQL path.");
+
+            JPanel form = new JPanel(new GridBagLayout());
+            form.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+            GridBagConstraints c = new GridBagConstraints();
+            c.insets = new Insets(6, 6, 6, 6);
+            c.fill = GridBagConstraints.HORIZONTAL;
+
+            c.gridx = 0; c.gridy = 0; c.weightx = 0;
+            form.add(new JLabel("Excel file:"), c);
+            c.gridx = 1; c.weightx = 1;
+            form.add(excelField, c);
+            c.gridx = 2; c.weightx = 0;
+            JButton browseExcel = new JButton("Browse...");
+            form.add(browseExcel, c);
+
+            c.gridx = 0; c.gridy = 1; c.weightx = 0;
+            form.add(new JLabel("Output SQL:"), c);
+            c.gridx = 1; c.weightx = 1;
+            form.add(outputField, c);
+            c.gridx = 2; c.weightx = 0;
+            JButton browseOutput = new JButton("Browse...");
+            form.add(browseOutput, c);
+
+            c.gridx = 0; c.gridy = 2; c.gridwidth = 3; c.weightx = 1;
+            JButton generateButton = new JButton("Generate SQL");
+            form.add(generateButton, c);
+
+            c.gridy = 3;
+            statusLabel.setBorder(BorderFactory.createEmptyBorder(4, 2, 0, 2));
+            form.add(statusLabel, c);
+
+            frame.setLayout(new BorderLayout());
+            frame.add(form, BorderLayout.CENTER);
+
+            browseExcel.addActionListener(e -> {
+                JFileChooser chooser = new JFileChooser();
+                chooser.setFileFilter(new FileNameExtensionFilter("Excel file (*.xlsx)", "xlsx"));
+                if (!excelField.getText().trim().isEmpty()) {
+                    chooser.setSelectedFile(new File(excelField.getText().trim()));
+                }
+                if (chooser.showOpenDialog(frame) == JFileChooser.APPROVE_OPTION) {
+                    File selected = chooser.getSelectedFile();
+                    excelField.setText(selected.getAbsolutePath());
+                    if (outputField.getText().trim().isEmpty()) {
+                        outputField.setText(new File(selected.getParentFile(), "errorcode.sql").getAbsolutePath());
+                    }
+                }
+            });
+
+            browseOutput.addActionListener(e -> {
+                JFileChooser chooser = new JFileChooser();
+                chooser.setFileFilter(new FileNameExtensionFilter("SQL file (*.sql)", "sql"));
+                if (!outputField.getText().trim().isEmpty()) {
+                    chooser.setSelectedFile(new File(outputField.getText().trim()));
+                }
+                if (chooser.showSaveDialog(frame) == JFileChooser.APPROVE_OPTION) {
+                    File selected = chooser.getSelectedFile();
+                    if (!selected.getName().toLowerCase(Locale.ROOT).endsWith(".sql")) {
+                        selected = new File(selected.getAbsolutePath() + ".sql");
+                    }
+                    outputField.setText(selected.getAbsolutePath());
+                }
+            });
+
+            generateButton.addActionListener(e -> {
+                String excelText = excelField.getText().trim();
+                String outputText = outputField.getText().trim();
+                if (excelText.isEmpty()) {
+                    statusLabel.setText("Please select an Excel file first.");
+                    return;
+                }
+                if (outputText.isEmpty()) {
+                    outputText = "errorcode.sql";
+                    outputField.setText(outputText);
+                }
+                Config config = new Config();
+                config.excelPath = Paths.get(excelText);
+                config.outputPath = Paths.get(outputText);
+                generateButton.setEnabled(false);
+                statusLabel.setText("Generating...");
+                try {
+                    int count = generate(config);
+                    String abs = config.outputPath.toAbsolutePath().toString();
+                    statusLabel.setText("Generated " + count + " rows: " + abs);
+                    JOptionPane.showMessageDialog(frame,
+                            "Generated successfully!\nRows: " + count + "\nOutput: " + abs,
+                            "Done", JOptionPane.INFORMATION_MESSAGE);
+                } catch (Exception ex) {
+                    statusLabel.setText("Failed: " + ex.getMessage());
+                    JOptionPane.showMessageDialog(frame,
+                            "Failed: " + ex.getMessage(),
+                            "Error", JOptionPane.ERROR_MESSAGE);
+                } finally {
+                    generateButton.setEnabled(true);
+                }
+            });
+
+            frame.pack();
+            frame.setLocationRelativeTo(null);
+            frame.setVisible(true);
         }
     }
 }

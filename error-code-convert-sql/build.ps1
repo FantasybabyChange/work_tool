@@ -11,7 +11,7 @@ Get-ChildItem -Path (Join-Path $Root "src\main\java") -Recurse -Filter *.java |
     ForEach-Object { $_.FullName } |
     Set-Content -Path $SourcesPath -Encoding ASCII
 
-javac -encoding UTF-8 -d $Classes "@$SourcesPath"
+javac -encoding UTF-8 --release 25 -d $Classes "@$SourcesPath"
 if ($LASTEXITCODE -ne 0) {
     throw "javac failed with exit code $LASTEXITCODE"
 }

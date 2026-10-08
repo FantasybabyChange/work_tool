@@ -1,5 +1,6 @@
 target/
 .idea/
+*.*
 errorcode.sql
 *.class
 *.iml
